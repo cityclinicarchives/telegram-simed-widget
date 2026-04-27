@@ -2,8 +2,8 @@ import asyncio
 import os
 from dotenv import load_dotenv
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Bot, Dispatcher, F, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 load_dotenv()
 
@@ -15,13 +15,20 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
+@dp.message(F.web_app_data)
+async def webapp_data(message: types.Message):
+    text = message.web_app_data.data
+
+    await message.answer(text)
+
+
 @dp.message()
 async def start(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
                 text="Записаться к врачу",
-                url=BOOKING_URL
+                web_app=WebAppInfo(url=BOOKING_URL)
             )
         ]
     ])
