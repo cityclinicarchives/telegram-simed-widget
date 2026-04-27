@@ -4,10 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Запись к врачу</title>
-
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://www.google.com/recaptcha/api.js" async defer></script>
-
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #f5f5f5; color: #222; }
     .card { background: white; border-radius: 14px; padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); margin-bottom: 14px; }
@@ -25,7 +23,6 @@
     .success { color: #087b2f; }
   </style>
 </head>
-
 <body>
   <div class="card">
     <h2>Запись к врачу</h2>
@@ -50,27 +47,21 @@
   <div class="card hidden" id="step-patient">
     <label>4. Имя</label>
     <input id="name" placeholder="Например, Виктор" />
-
     <label>Телефон</label>
-    <input id="phone" placeholder="Например, 9096336413" />
-
+    <input id="phone" placeholder="Например, +79096336413" />
     <div style="margin-top:12px" id="captcha-container"></div>
-
-    <button id="recordBtn">Получить проверочный код</button>
+    <button type="button" id="recordBtn" onclick="recordDirect()">Получить проверочный код</button>
   </div>
 
   <div class="card hidden" id="step-code">
     <div id="code-info" class="muted"></div>
-
     <label>5. Введите проверочный код</label>
     <input id="code" placeholder="Код" />
-
     <button id="confirmBtn">Подтвердить запись</button>
   </div>
 
 <script>
 const BACKEND_URL = window.location.origin;
-
 let recaptchaSiteKey = "";
 
 const tg = window.Telegram?.WebApp;
@@ -85,91 +76,62 @@ let state = {
   requestKey: null
 };
 
-function setStatus(text, cls = "muted") {
+function setStatus(text, cls="muted") {
   const el = document.getElementById("status");
   el.className = cls;
   el.textContent = text;
 }
 
-function show(id) {
-  document.getElementById(id).classList.remove("hidden");
-}
+function show(id) { document.getElementById(id).classList.remove("hidden"); }
+function hide(id) { document.getElementById(id).classList.add("hidden"); }
 
-function hide(id) {
-  document.getElementById(id).classList.add("hidden");
-}
-
-async function api(path, options = {}) {
+async function api(path, options={}) {
   const res = await fetch(BACKEND_URL + path, options);
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
+  if (!res.ok) throw new Error(await res.text());
   return await res.json();
-}
-
-async function loadConfig() {
-  const cfg = await api("/config");
-  recaptchaSiteKey = cfg.recaptcha_site_key;
-
-  if (!recaptchaSiteKey) {
-    throw new Error("Не найден RECAPTCHA_SITE_KEY в backend");
-  }
 }
 
 function renderCaptcha() {
   const box = document.getElementById("captcha-container");
-  box.innerHTML = "";
+  box.innerHTML = '<div class="g-recaptcha" data-sitekey="' + recaptchaSiteKey + '"></div>';
+  if (window.grecaptcha) grecaptcha.render(box.querySelector('.g-recaptcha'));
+}
 
-  const captchaDiv = document.createElement("div");
-  captchaDiv.className = "g-recaptcha";
-  captchaDiv.setAttribute("data-sitekey", recaptchaSiteKey);
-  box.appendChild(captchaDiv);
-
-  if (window.grecaptcha) {
-    grecaptcha.render(captchaDiv);
+async function loadConfig() {
+  const cfg = await api('/config');
+  if (!recaptchaSiteKey || recaptchaSiteKey.startsWith('__')) {
+    recaptchaSiteKey = cfg.recaptcha_site_key;
   }
 }
 
 async function loadSpecializations() {
   setStatus("Загружаем специальности...");
-
-  state.specializations = await api("/specializations");
-
-  const select = document.getElementById("specialty");
+  state.specializations = await api('/specializations');
+  const select = document.getElementById('specialty');
   select.innerHTML = '<option value="">Выберите...</option>';
-
   state.specializations.forEach(s => {
-    const opt = document.createElement("option");
+    const opt = document.createElement('option');
     opt.value = s.id;
     opt.textContent = s.name;
     select.appendChild(opt);
   });
-
   setStatus("Выберите специальность");
 }
 
 async function loadDoctors(specId) {
   setStatus("Загружаем врачей...");
-
-  hide("step-slots");
-  hide("step-patient");
-  hide("step-code");
-
+  hide('step-slots'); hide('step-patient'); hide('step-code');
   state.selectedSpec = state.specializations.find(s => String(s.id) === String(specId));
-
-  state.doctors = await api("/doctors?spec_id=" + encodeURIComponent(specId));
-
-  const select = document.getElementById("doctor");
+  state.doctors = await api('/doctors?spec_id=' + encodeURIComponent(specId));
+  const select = document.getElementById('doctor');
   select.innerHTML = '<option value="">Выберите...</option>';
-
   state.doctors.forEach(d => {
-    const opt = document.createElement("option");
+    const opt = document.createElement('option');
     opt.value = d.id;
     opt.textContent = d.name;
     select.appendChild(opt);
   });
-
-  show("step-doctor");
+  show('step-doctor');
   setStatus("Выберите врача");
 }
 
@@ -177,26 +139,17 @@ function weekRangeFromToday() {
   const start = new Date();
   const end = new Date();
   end.setDate(start.getDate() + 14);
-
-  return [
-    start.toISOString().slice(0, 10),
-    end.toISOString().slice(0, 10)
-  ];
+  return [start.toISOString().slice(0,10), end.toISOString().slice(0,10)];
 }
 
 async function loadSlots(workerId) {
   setStatus("Загружаем свободное время...");
-
-  hide("step-patient");
-  hide("step-code");
-
+  hide('step-patient'); hide('step-code');
   state.selectedDoctor = state.doctors.find(d => String(d.id) === String(workerId));
-
   const [date_start, date_end] = weekRangeFromToday();
-
-  const data = await api("/worker-cells", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
+  const data = await api('/worker-cells', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       worker_id: Number(workerId),
       doctor_id: Number(state.selectedSpec.id),
@@ -204,152 +157,167 @@ async function loadSlots(workerId) {
       date_end
     })
   });
-
-  const slotsBox = document.getElementById("slots");
-  slotsBox.innerHTML = "";
-
+  const slotsBox = document.getElementById('slots');
+  slotsBox.innerHTML = '';
   if (!data.slots || !data.slots.length) {
     slotsBox.innerHTML = '<div class="muted">Свободных слотов пока нет</div>';
   } else {
     data.slots.forEach(slot => {
-      const div = document.createElement("div");
-      div.className = "slot";
-      div.textContent = slot.date + " " + slot.time_interval;
+      const div = document.createElement('div');
+      div.className = 'slot';
+      div.textContent = slot.date + ' ' + slot.time_interval;
       div.onclick = () => selectSlot(slot, div);
       slotsBox.appendChild(div);
     });
   }
-
-  show("step-slots");
+  show('step-slots');
   setStatus("Выберите дату и время");
 }
 
 function selectSlot(slot, el) {
-  document.querySelectorAll(".slot").forEach(x => x.classList.remove("active"));
-  el.classList.add("active");
-
+  document.querySelectorAll('.slot').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
   state.selectedSlot = slot;
-
-  show("step-patient");
+  show('step-patient');
   renderCaptcha();
-
   setStatus("Введите имя, телефон и пройдите капчу");
 }
 
 async function recordDirect() {
-  const name = document.getElementById("name").value.trim();
-  const phone = document.getElementById("phone").value.trim();
-  const recaptcha = grecaptcha.getResponse();
+  alert("Кнопка точно нажалась");
+  try {
+    
+    alert("Кнопка нажалась. Начинаем отправку заявки.");
 
-  if (!state.selectedSlot) return alert("Выберите дату и время");
-  if (!name) return alert("Введите имя");
-  if (!phone) return alert("Введите телефон");
-  if (!recaptcha) return alert("Подтвердите, что вы не робот");
+    const name = document.getElementById("name").value.trim();
+    const phone = document.getElementById("phone").value.trim();
 
-  setStatus("Отправляем заявку...");
+    if (!state.selectedSlot) {
+      alert("Выберите дату и время");
+      return;
+    }
 
-  const result = await api("/record-direct", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
+    if (!name) {
+      alert("Введите имя");
+      return;
+    }
+
+    if (!phone) {
+      alert("Введите телефон");
+      return;
+    }
+
+    if (!window.grecaptcha) {
+      alert("reCAPTCHA не загрузилась");
+      return;
+    }
+
+    const recaptcha = grecaptcha.getResponse();
+
+    if (!recaptcha) {
+      alert("Подтвердите, что вы не робот");
+      return;
+    }
+
+    setStatus("Отправляем заявку...");
+
+    const payload = {
       doctor_id: Number(state.selectedSpec.id),
       worker_id: Number(state.selectedDoctor.id),
       date: state.selectedSlot.date,
       time_interval: state.selectedSlot.time_interval,
-      name,
-      phone,
-      recaptcha
-    })
-  });
+      name: name,
+      phone: phone,
+      recaptcha: recaptcha
+    };
 
-  if (!result.success) {
-    grecaptcha.reset();
-    setStatus(result.message || "СиМед отклонил заявку", "error");
-    return;
+    alert("Отправляем данные в backend:\n" + JSON.stringify(payload, null, 2));
+
+    const result = await api("/record-direct", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+
+    alert("Ответ backend:\n" + JSON.stringify(result, null, 2));
+
+    if (!result.success) {
+      grecaptcha.reset();
+      setStatus(result.message || "СиМед отклонил заявку", "error");
+      return;
+    }
+
+    state.requestKey = result.request_key;
+
+    const sms = await api("/send-medorg-sms/20");
+
+    let info = "Заявка создана. Введите проверочный код.";
+
+    if (sms.value === "False") {
+      const rand = await api("/send-rand/" + encodeURIComponent(state.requestKey));
+      info = "Проверочный код: " + rand.code + ". Введите его ниже.";
+    } else {
+      info = "Код отправлен по SMS. Введите его ниже.";
+    }
+
+    document.getElementById("code-info").textContent = info;
+    show("step-code");
+    setStatus("Введите проверочный код");
+
+  } catch (error) {
+    alert("Ошибка при получении кода:\n" + error.message);
+    setStatus("Ошибка: " + error.message, "error");
   }
-
-  state.requestKey = result.request_key;
-
-  const sms = await api("/send-medorg-sms/20");
-
-  let info = "Заявка создана. Введите проверочный код.";
-
-  if (sms.value === "False") {
-    const rand = await api("/send-rand/" + encodeURIComponent(state.requestKey));
-    info = "Проверочный код: " + rand.code + ". Введите его ниже.";
-  } else {
-    info = "Код отправлен по SMS. Введите его ниже.";
-  }
-
-  document.getElementById("code-info").textContent = info;
-
-  show("step-code");
-  setStatus("Введите проверочный код");
 }
 
 async function confirmBooking() {
-  const code = document.getElementById("code").value.trim();
-
-  if (!code) return alert("Введите код");
-
-  setStatus("Подтверждаем запись...");
-
-  const result = await api("/confirm", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      request_key: state.requestKey,
-      code
-    })
+  const code = document.getElementById('code').value.trim();
+  if (!code) return alert('Введите код');
+  setStatus('Подтверждаем запись...');
+  const result = await api('/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ request_key: state.requestKey, code })
   });
 
   if (!result.success) {
-    setStatus("Код неверный или запись не подтверждена", "error");
+    setStatus('Код неверный или запись не подтверждена', 'error');
     return;
   }
 
   const payload = {
-    type: "booking_success",
-    doctor_name: state.selectedDoctor?.name || "",
-    specialization: state.selectedSpec?.name || "",
-    date: state.selectedSlot?.date || "",
-    time_interval: state.selectedSlot?.time_interval || ""
+    type: 'booking_success',
+    doctor_name: state.selectedDoctor?.name || '',
+    specialization: state.selectedSpec?.name || '',
+    date: state.selectedSlot?.date || '',
+    time_interval: state.selectedSlot?.time_interval || ''
   };
 
-  setStatus("Запись подтверждена", "success");
+  setStatus('Запись подтверждена', 'success');
 
   if (tg) {
     tg.sendData(JSON.stringify(payload));
     tg.close();
   } else {
-    alert(
-      "Вы записаны к врачу " +
-      payload.doctor_name +
-      " на " +
-      payload.date +
-      " " +
-      payload.time_interval
-    );
+    alert('Вы записаны к врачу ' + payload.doctor_name + ' на ' + payload.date + ' ' + payload.time_interval);
   }
 }
 
-document.getElementById("specialty").addEventListener("change", e => {
+document.getElementById('specialty').addEventListener('change', e => {
   if (e.target.value) loadDoctors(e.target.value);
 });
-
-document.getElementById("doctor").addEventListener("change", e => {
+document.getElementById('doctor').addEventListener('change', e => {
   if (e.target.value) loadSlots(e.target.value);
 });
-
-document.getElementById("recordBtn").addEventListener("click", recordDirect);
-document.getElementById("confirmBtn").addEventListener("click", confirmBooking);
+// document.getElementById("recordBtn").addEventListener("click", recordDirect);
+document.getElementById('confirmBtn').addEventListener('click', confirmBooking);
 
 (async function init() {
   try {
     await loadConfig();
     await loadSpecializations();
   } catch (e) {
-    setStatus("Ошибка загрузки: " + e.message, "error");
+    setStatus('Ошибка загрузки: ' + e.message, 'error');
   }
 })();
 </script>
